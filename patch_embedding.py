@@ -93,6 +93,28 @@ class Timestep_Embedder(torch.nn.Module):
 
 
 
+class Fourier_Embedder(torch.nn.Module):
+    """
+    Single number input -> embedding
+    """
+
+    def __init__(self, num_freqs = 128, d_model: int = 768):
+        super().__init__()
+
+        self.register_buffer("freqs", torch.randn(num_freqs) * 10)
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(2 * num_freqs, d_model),
+            torch.nn.SiLU(),
+            torch.nn.Linear(d_model, d_model)
+        )
+
+    def forward(self, number):
+        # number: [B, ]
+        x = number.unsqueeze(1) * self.freqs.unsqueeze(0)
+        x = torch.cat([torch.sin(x), torch.cos(x)], dim = -1) # [B, 2 * num_freqs]
+        return self.mlp(x)                                          # [B, d_model]
+    
+
 
 if __name__ == "__main__":
     patch_class   = Patchify(channels = 4, patch_size = 2)
