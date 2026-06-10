@@ -4,7 +4,7 @@ import math
 
 
 class Patchify(torch.nn.Module):
-    def __init__(self, in_channels: int = 4, patch_size: int = 2, d_model: int = 768):
+    def __init__(self, channels: int = 4, patch_size: int = 2, d_model: int = 768):
         super().__init__()
         
         # [B, C, H, W] -> [B, seq_len, d_model]
@@ -12,7 +12,7 @@ class Patchify(torch.nn.Module):
 
         self.patch_size = patch_size
 
-        self.d_model_expander = torch.nn.Linear(in_channels * self.patch_size * self.patch_size, d_model)
+        self.d_model_expander = torch.nn.Linear(channels * self.patch_size * self.patch_size, d_model)
 
 
     def forward(self, grid: torch.Tensor):
@@ -28,7 +28,7 @@ class Patchify(torch.nn.Module):
 
 
 
-class Unpatchify(torch.nn.Module):
+class PixelSpace(torch.nn.Module):
     """
     Back to pixel space from d_model dimension
     """
@@ -112,21 +112,36 @@ class Fourier_Embedder(torch.nn.Module):
         # number: [B, ]
         x = number.unsqueeze(1) * self.freqs.unsqueeze(0)
         x = torch.cat([torch.sin(x), torch.cos(x)], dim = -1) # [B, 2 * num_freqs]
-        return self.mlp(x)                                          # [B, d_model]
+        return self.mlp(x)                                    # [B, d_model]
     
+
+def Unpatchify(pixel_space: torch.Tensor, grid_size: int = 32, patch_size: int = 2, channles: int = 4):
+    num_patches = grid_size // patch_size
+    pixel_space = pixel_space.transpose(-2, -1)                                                                      # [B, seq_len, embed_dim'] -> [B, embed_dim', seq_len]
+    B, embed_dim_pixel_space, _ = pixel_space.shape
+    pixel_space = pixel_space.view(B, embed_dim_pixel_space, num_patches, num_patches)                               # [B, embed_dim', seq_len] -> [B, embed_dim', num_patches, num_patches]
+    pixel_space = pixel_space.reshape(B, embed_dim_pixel_space // (patch_size**2), num_patches*patch_size, num_patches*patch_size)   # [B, C, H, W]
+    return pixel_space
+
+
 
 
 if __name__ == "__main__":
     patch_class   = Patchify(channels = 4, patch_size = 2)
-    unpatch_class = Unpatchify(d_model = 768, channels = 4, patch_size = 2)
+    pixel_space_class = PixelSpace(d_model = 768, channels = 4, patch_size = 2)
 
     post_vae = torch.rand(3, 4, 32, 32)
+
+    print(f"Post VAE shape: {post_vae.shape}")
 
     patchified = patch_class(post_vae)
     print(f"Patchified shape: {patchified.shape}")
 
-    unpatchified = unpatch_class(patchified, torch.rand(patchified.shape[0], patchified.shape[-1]))
-    print(f"Un-patchified shape: {unpatchified.shape}")
+    pixel_space = pixel_space_class(patchified, torch.rand(patchified.shape[0], patchified.shape[-1]))
+    print(f"Pixel space shape: {pixel_space.shape}")
+
+    unpatchified = Unpatchify(pixel_space = pixel_space, patch_size = 2, grid_size = 32, channles = 4)
+    print(f"Unpatchified shape: {unpatchified.shape}")
     
 
     timestep_embedder = Timestep_Embedder(timestep_freq = 256, d_model = 768)
