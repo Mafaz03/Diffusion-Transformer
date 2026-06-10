@@ -103,7 +103,7 @@ class VAE(torch.nn.Module):
         self.decoder = Decoder(ch = ch, latent_channels = latent_channels)
 
     def encode(self, normal_grid):
-        self.mu, self.logvar = self.encoder(normal_grid)
+        mu, logvar = self.encoder(normal_grid)
         return mu, logvar
     
     def decode(self, compressed_grid):
@@ -121,6 +121,19 @@ class VAE(torch.nn.Module):
         recon_grid = self.decode(compressed_grid = z)
         return recon_grid, mu, logvar
     
+def vae_loss(recon, x, mu, logvar, kl_weight=1e-4):
+    """
+    - Reconstruction: how well the decoder rebuilds the input
+    - KL divergence: pushes latent distribution toward N(0,I)
+    """
+
+    recon_loss = torch.nn.functional.mse_loss(recon, x, reduction='mean')
+
+    # KL(N(mu, sigma) || N(0,1)) closed form
+    kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+
+    # kl_weight is small at start (KL annealing) to avoid posterior collapse
+    return recon_loss + kl_weight * kl_loss
 
 if __name__ == "__main__":
     img = torch.rand(3, 3, 256, 256)
