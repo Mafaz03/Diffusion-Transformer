@@ -26,8 +26,6 @@ class Patchify(torch.nn.Module):
         return self.d_model_expander(grid)                                                                    # [B, seq_len, embed_dim]
     
 
-
-
 class PixelSpace(torch.nn.Module):
     """
     Back to pixel space from d_model dimension
