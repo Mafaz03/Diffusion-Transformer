@@ -14,6 +14,27 @@ from DiT import DiT
 from Scheduler import DDPM
 
 
+def compute_latent_scale(vae: VAE, dataloader: DataLoader, device: str, n_batches: int = 50) -> float:
+    """
+    Compute the empirical std of the VAE latent space so DiT trains
+    on unit-variance latents.
+ 
+    latent_scale  ->  z_scaled = z / latent_scale  (std approx 1)
+    At sampling   ->  z        = z_scaled * latent_scale  before decode
+    """
+    vae.eval()
+    all_stds = []
+    with torch.no_grad():
+        for i, (images, *_ ) in enumerate(dataloader):
+            if i >= n_batches:
+                break
+            images = images.to(device)
+            mu, logvar = vae.encode(images)
+            z = vae.reparameterize(mu, logvar)
+            all_stds.append(z.std().item())
+    scale = float(torch.tensor(all_stds).mean())
+    print(f"[latent_scale] empirical latent std = {scale:.4f}")
+    return scale
 
 
 def train_vae(vae, dataloader, epochs=100, device = "cuda"):
@@ -46,67 +67,143 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
     return losses
 
 
-def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, latent_scale: float, epochs = 10, lr=1e-4, device="cuda", freeze_VAE: bool = True):
+def train_dit(
+    model:        DiT,
+    vae:          VAE,
+    dataloader:   DataLoader,
+    scheduler:    DDPM,
+    latent_scale: float,
+    epochs:       int   = 10,
+    lr:           float = 1e-4,
+    device:       str   = "cuda",
+):
     model.to(device)
     vae.to(device)
-
+ 
+    
+    scheduler.betas                  = scheduler.betas.to(device)
+    scheduler.alphas                 = scheduler.alphas.to(device)
+    scheduler.alpha_bars_cumprod     = scheduler.alpha_bars_cumprod.to(device)
+    scheduler.alpha_bars_sqrt        = scheduler.alpha_bars_sqrt.to(device)
+    scheduler._1_minus_alpha_bars_sqrt = scheduler._1_minus_alpha_bars_sqrt.to(device)
+ 
     # Freeze VAE
-    if freeze_VAE:
-        vae.eval()
-        for p in vae.parameters():
-            p.requires_grad = False
-
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=lr
-    )
-
-    losses = []
-
+    vae.eval()
+    for p in vae.parameters():
+        p.requires_grad = False
+ 
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    losses    = []
+ 
     for epoch in range(epochs):
-
         model.train()
         epoch_loss = 0.0
-        smoothed_loss = None
-        alpha = 0.95
-
-        for images, _, _, _, numbers in dataloader:
-
-            images = images.to(device)
+ 
+        for images, _x_t, _noise, _t, numbers in dataloader:
+            images  = images.to(device)
             numbers = numbers.float().to(device)
-
+ 
             with torch.no_grad():
                 mu, logvar = vae.encode(images)
-                z = vae.reparameterize(mu, logvar) * latent_scale
-
+                z = vae.reparameterize(mu, logvar) / latent_scale  # unit variance
+ 
             B = z.shape[0]
-
-            t = torch.randint(0, scheduler.max_timesteps, (B,),device=device)
-
+            t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
+ 
             x_t, noise = scheduler.add_noise(z, t)
-
-            noise_pred = model(noisy_latent = x_t, time = t.float(), number = numbers)
-
+ 
+            noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
+ 
             loss = torch.nn.functional.mse_loss(noise_pred, noise)
-            if smoothed_loss is None:
-                smoothed_loss = loss.item()
-            else:
-                smoothed_loss = alpha * smoothed_loss + (1 - alpha) * loss.item()
-
+ 
             optimizer.zero_grad()
-            smoothed_loss.backward()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+ 
+            epoch_loss += loss.item()
+ 
+        avg = epoch_loss / len(dataloader)
+        losses.append(avg)
+        print(f"[DiT] Epoch {epoch+1}/{epochs}  loss={avg:.6f}")
+ 
+    return losses
 
-            epoch_loss += smoothed_loss.item()
-
-        avg_loss = epoch_loss / len(dataloader)
-        losses.append(avg_loss)
-
-        print(
-            f"Epoch {epoch + 1}/{epochs} "
-            f"Loss: {avg_loss:.6f}"
-        )
-
+def train_joint(
+    model:        DiT,
+    vae:          VAE,
+    dataloader:   DataLoader,
+    scheduler:    DDPM,
+    latent_scale: float,
+    epochs:       int   = 5,
+    lr_dit:       float = 1e-4,
+    lr_vae:       float = 1e-5,   # 10× smaller – VAE is already converged
+    kl_weight:    float = 1e-4,
+    device:       str   = "cuda",
+):
+    """
+    Joint fine-tuning of VAE + DiT.
+ 
+    Loss = diffusion_loss  +  vae_reconstruction_loss  +  kl_weight * kl_loss
+ 
+    The diffusion loss gradient flows through latent z back into the VAE
+    encoder because we no longer use torch.no_grad() around the encode step.
+    """
+    model.to(device)
+    vae.to(device)
+ 
+    scheduler.betas                    = scheduler.betas.to(device)
+    scheduler.alphas                   = scheduler.alphas.to(device)
+    scheduler.alpha_bars_cumprod       = scheduler.alpha_bars_cumprod.to(device)
+    scheduler.alpha_bars_sqrt          = scheduler.alpha_bars_sqrt.to(device)
+    scheduler._1_minus_alpha_bars_sqrt = scheduler._1_minus_alpha_bars_sqrt.to(device)
+ 
+    optimizer = torch.optim.AdamW([
+        {"params": model.parameters(), "lr": lr_dit},
+        {"params": vae.parameters(),   "lr": lr_vae},
+    ])
+ 
+    losses = []
+ 
+    for epoch in range(epochs):
+        model.train()
+        vae.train()
+        epoch_loss = 0.0
+ 
+        for images, _x_t, _noise, _t, numbers in dataloader:
+            images  = images.to(device)
+            numbers = numbers.float().to(device)
+ 
+            # VAE forward
+            mu, logvar = vae.encode(images)
+            z          = vae.reparameterize(mu, logvar) / latent_scale
+            recon      = vae.decode(z * latent_scale)
+ 
+            vae_l = vae_loss(recon, images, mu, logvar, kl_weight=kl_weight)
+ 
+            # Diffusion forward 
+            B = z.shape[0]
+            t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
+ 
+            x_t, noise = scheduler.add_noise(z.detach(), t)
+ 
+            noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
+            diff_loss  = torch.nn.functional.mse_loss(noise_pred, noise)
+ 
+            loss = diff_loss + vae_l
+ 
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(vae.parameters(),   1.0)
+            optimizer.step()
+ 
+            epoch_loss += loss.item()
+ 
+        avg = epoch_loss / len(dataloader)
+        losses.append(avg)
+        print(f"[Joint] Epoch {epoch+1}/{epochs}  loss={avg:.6f}")
+ 
     return losses
 
 
@@ -122,7 +219,7 @@ def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, latent_scale: flo
     n = torch.tensor([n_value], dtype=torch.float32, device=device)
 
     for t in tqdm(reversed(range(scheduler.max_timesteps)), total=scheduler.max_timesteps):
-        t_batch = torch.tensor([t], device=device)
+        t_batch    = torch.tensor([t], device=device, dtype=torch.long)
         noise_pred = model(noisy_latent = x, time = t_batch, number = n)
         
         x = scheduler.remove_noise(xt    = x, 
