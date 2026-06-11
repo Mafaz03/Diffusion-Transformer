@@ -41,7 +41,8 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
             step += 1
         
         losses.append(epoch_loss/len(dataloader))
-        print(f"Epoch: {epoch} / {epochs} => loss: {epoch_loss/len(dataloader):.2f}")
+        print(f"Epoch: {epoch} / {epochs} => loss: {epoch_loss/len(dataloader):.5f}")
+    return losses
 
 
 def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, epochs = 10, lr=1e-4, device="cuda", freeze_VAE: bool = True):
@@ -116,11 +117,6 @@ def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, img_size = 256, d
     for t in tqdm(reversed(range(scheduler.max_timesteps)), total=scheduler.max_timesteps):
         t_batch = torch.tensor([t], device=device)
         noise_pred = model(noisy_latent = x, time = t_batch, number = n)
-        print(
-                t,
-                scheduler.alpha_bars_sqrt[t],
-                scheduler._1_minus_alpha_bars_sqrt[t]
-                )
         
         x = scheduler.remove_noise(xt    = x, 
                                    t     = t, 
