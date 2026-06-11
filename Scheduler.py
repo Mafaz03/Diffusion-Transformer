@@ -33,4 +33,8 @@ class DDPM:
         # x0: [B, C, H, W]
         # t : [B, ]
 
-        return (xt - (self._1_minus_alpha_bars_sqrt[t].view(-1, 1, 1, 1).to(xt.device) * noise)) / self._1_minus_alpha_bars_sqrt[t].view(-1, 1, 1, 1).to(xt.device)[t]
+        alpha_bar_sqrt           = self.alpha_bars_sqrt[t].view(-1,1,1,1).to(xt.device)
+        one_minus_alpha_bar_sqrt = self._1_minus_alpha_bars_sqrt[t].view(-1,1,1,1).to(xt.device)
+
+
+        return (xt - one_minus_alpha_bar_sqrt * noise) / alpha_bar_sqrt
