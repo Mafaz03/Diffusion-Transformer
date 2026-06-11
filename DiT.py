@@ -85,7 +85,7 @@ class DiT(torch.nn.Module):
         """
 
         patchified_latents = self.patchify(grid = noisy_latent)                      # [B, C, H, W] -> [B, seq_len, d_model]
-        patchified_latents = patchified_latents + self.position_embed
+        patchified_latents = patchified_latents + self.pos_embed
 
         context = self.t_embed(t = time) + self.number_embed(number = number)        # [B, d_model]
         for block in self.blocks:
