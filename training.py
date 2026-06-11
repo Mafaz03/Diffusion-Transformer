@@ -100,3 +100,32 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, epochs = 10, lr
         )
 
     return losses
+
+
+@torch.no_grad()
+def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, img_size = 256, device='cuda'):
+    """Generate an image conditioned on a specific number."""
+
+    # Start from pure noise
+    x = torch.randn(1, 4, img_size // 8, img_size // 8, device=device)
+    n = torch.tensor([n_value], dtype=torch.float32, device=device)
+
+    for t in tqdm(reversed(range(scheduler.max_timesteps)), total=scheduler.max_timesteps):
+        t_batch = torch.tensor([t], device=device)
+        noise_pred = model(noisy_latent = x, time = t_batch, number = n)
+        print(
+                t,
+                scheduler.alpha_bars_sqrt[t],
+                scheduler._1_minus_alpha_bars_sqrt[t]
+                )
+        
+        x = scheduler.remove_noise(xt    = x, 
+                                   t     = t, 
+                                   noise = noise_pred)
+        if torch.isnan(x).any():
+            print("NaN at timestep:", t)
+            break
+
+    # Decode latent -> image
+    image = vae.decode(x)
+    return image
