@@ -19,11 +19,13 @@ class Patchify(torch.nn.Module):
         # grid: [B, C, H, W]; post VAE 
 
         B, C, H, W = grid.shape
+        p = self.patch_size
         
-        grid = grid.reshape(B, C * self.patch_size * self.patch_size, H//self.patch_size, W//self.patch_size) # [B, embed_dim', num_patches_x, num_patches_y]
-        grid = grid.reshape(B, C * self.patch_size * self.patch_size, -1)                                     # [B, embed_dim', num_patches_x * num_patches_y] basically [B, embed_dim', seq_len]
-        grid = grid.transpose(2, 1)                                                                           # [B, seq_len, embed_dim']
-        return self.d_model_expander(grid)                                                                    # [B, seq_len, embed_dim]
+        patches = grid.unfold(2, p, p).unfold(3, p, p)                                                        # [B, C, H/p, W/p, p, p]
+        patches = patches.contiguous().permute(0, 2, 3, 1, 4, 5)                                              # [B, H/p, W/p, C, p, p]
+        patches = patches.reshape(B, (H//p)*(W//p), C*p*p)                                                    # [B, seq_len, C*p^2] basically [B, seq_len, embed_dim']
+
+        return self.d_model_expander(patches)                                                                 # [B, seq_len, embed_dim]
     
 
 class PixelSpace(torch.nn.Module):
@@ -113,14 +115,18 @@ class Fourier_Embedder(torch.nn.Module):
         return self.mlp(x)                                    # [B, d_model]
     
 
-def Unpatchify(pixel_space: torch.Tensor, grid_size: int = 32, patch_size: int = 2, channles: int = 4):
-    num_patches = grid_size // patch_size
-    pixel_space = pixel_space.transpose(-2, -1)                                                                      # [B, seq_len, embed_dim'] -> [B, embed_dim', seq_len]
-    B, embed_dim_pixel_space, _ = pixel_space.shape
-    pixel_space = pixel_space.view(B, embed_dim_pixel_space, num_patches, num_patches)                               # [B, embed_dim', seq_len] -> [B, embed_dim', num_patches, num_patches]
-    pixel_space = pixel_space.reshape(B, embed_dim_pixel_space // (patch_size**2), num_patches*patch_size, num_patches*patch_size)   # [B, C, H, W]
-    return pixel_space
+def Unpatchify(pixel_space: torch.Tensor, grid_size: int = 32, patch_size: int = 2, channels: int = 4):
+    # pixel_space: [B, seq_len, C*p^2]
 
+    num_patches = grid_size // patch_size
+    B = pixel_space.shape[0]
+
+    out = pixel_space.reshape(B, num_patches, num_patches, channels, patch_size, patch_size) # [B, H/p, H/p, C, p, p]
+    out = out.permute(0, 3, 1, 4, 2, 5).contiguous()                                         # [B, C, H/p, p, W/p, p]
+    out = out.reshape(B, channels, grid_size, grid_size)                                     # [B, C, H, W]
+    return out
+
+    
 
 
 
@@ -138,7 +144,7 @@ if __name__ == "__main__":
     pixel_space = pixel_space_class(patchified, torch.rand(patchified.shape[0], patchified.shape[-1]))
     print(f"Pixel space shape: {pixel_space.shape}")
 
-    unpatchified = Unpatchify(pixel_space = pixel_space, patch_size = 2, grid_size = 32, channles = 4)
+    unpatchified = Unpatchify(pixel_space = pixel_space, patch_size = 2, grid_size = 32, channels = 4)
     print(f"Unpatchified shape: {unpatchified.shape}")
     
 

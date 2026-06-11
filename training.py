@@ -30,7 +30,7 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
 
             # Anneal KL weight from 0 -> 1e-4 over first 10k steps
             # to avoid posterior collapse early in training
-            kl_w = min(1e-4, step / epochs * 1e-4)
+            kl_w = min(1e-4, step / 10_000 * 1e-4)
             loss = vae_loss(recon, images, mu, logvar, kl_weight=kl_w)
             epoch_loss += loss.item()
 
@@ -73,7 +73,7 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, epochs = 10, lr
 
             with torch.no_grad():
                 mu, logvar = vae.encode(images)
-                z = vae.reparameterize(mu, logvar)
+                z = vae.reparameterize(mu, logvar) * 0.18215
 
             B = z.shape[0]
 
@@ -106,6 +106,9 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, epochs = 10, lr
 def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, img_size = 256, device='cuda'):
     """Generate an image conditioned on a specific number."""
 
+    model.eval()
+    vae.eval()
+
     # Start from pure noise
     x = torch.randn(1, 4, img_size // 8, img_size // 8, device=device)
     n = torch.tensor([n_value], dtype=torch.float32, device=device)
@@ -127,5 +130,5 @@ def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, img_size = 256, d
             break
 
     # Decode latent -> image
-    image = vae.decode(x)
+    image = vae.decode(x / 0.18215)
     return image

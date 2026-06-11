@@ -66,7 +66,8 @@ class DiT(torch.nn.Module):
         self.patch_size = patch_size
         self.num_patches = grid_size // patch_size
 
-        self.pos_embed = torch.zeros(1, self.num_patches * self.num_patches, d_model)
+        self.pos_embed = torch.nn.Parameter(torch.zeros(1, self.num_patches * self.num_patches, d_model))
+        torch.nn.init.normal_(self.pos_embed, std=0.02)
         self.register_buffer("position_embed", self.pos_embed)
 
         self.t_embed        = Timestep_Embedder(timestep_freq = timestep_freq, d_model = d_model)
