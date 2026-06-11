@@ -27,6 +27,7 @@ class dataset_imgs(Dataset):
         self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Resize((256, 256)),
+            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # -> [-1, 1]
         ])
 
         self.ddpm = DDPM(betas_start, betas_end, max_timesteps)

@@ -45,7 +45,7 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
     return losses
 
 
-def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, epochs = 10, lr=1e-4, device="cuda", freeze_VAE: bool = True):
+def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, latent_scale: float, epochs = 10, lr=1e-4, device="cuda", freeze_VAE: bool = True):
     model.to(device)
     vae.to(device)
 
@@ -74,7 +74,7 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, epochs = 10, lr
 
             with torch.no_grad():
                 mu, logvar = vae.encode(images)
-                z = vae.reparameterize(mu, logvar) * 0.18215
+                z = vae.reparameterize(mu, logvar) * latent_scale
 
             B = z.shape[0]
 
@@ -104,7 +104,7 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, epochs = 10, lr
 
 
 @torch.no_grad()
-def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, img_size = 256, device='cuda'):
+def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, latent_scale: float, img_size = 256, device='cuda'):
     """Generate an image conditioned on a specific number."""
 
     model.eval()
@@ -126,5 +126,5 @@ def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, img_size = 256, d
             break
 
     # Decode latent -> image
-    image = vae.decode(x / 0.18215)
+    image = vae.decode(x / latent_scale)
     return image
