@@ -67,6 +67,8 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, latent_scale: f
 
         model.train()
         epoch_loss = 0.0
+        smoothed_loss = None
+        alpha = 0.95
 
         for images, _, _, _, numbers in dataloader:
 
@@ -86,12 +88,16 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, latent_scale: f
             noise_pred = model(noisy_latent = x_t, time = t.float(), number = numbers)
 
             loss = torch.nn.functional.mse_loss(noise_pred, noise)
+            if smoothed_loss is None:
+                smoothed_loss = loss.item()
+            else:
+                smoothed_loss = alpha * smoothed_loss + (1 - alpha) * loss.item()
 
             optimizer.zero_grad()
-            loss.backward()
+            smoothed_loss.backward()
             optimizer.step()
 
-            epoch_loss += loss.item()
+            epoch_loss += smoothed_loss.item()
 
         avg_loss = epoch_loss / len(dataloader)
         losses.append(avg_loss)
