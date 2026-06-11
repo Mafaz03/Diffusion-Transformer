@@ -185,7 +185,7 @@ def train_joint(
             B = z.shape[0]
             t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
  
-            x_t, noise = scheduler.add_noise(z.detach(), t)
+            x_t, noise = scheduler.add_noise(z, t)
  
             noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
             diff_loss  = torch.nn.functional.mse_loss(noise_pred, noise)
@@ -230,5 +230,5 @@ def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, latent_scale: flo
             break
 
     # Decode latent -> image
-    image = vae.decode(x / latent_scale)
+    image = vae.decode(x * latent_scale)
     return image

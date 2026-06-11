@@ -101,6 +101,7 @@ class Fourier_Embedder(torch.nn.Module):
     def __init__(self, num_freqs = 128, d_model: int = 768):
         super().__init__()
 
+        torch.manual_seed(42)
         self.register_buffer("freqs", torch.randn(num_freqs) * 10)
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * num_freqs, d_model),
