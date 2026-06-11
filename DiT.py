@@ -65,8 +65,8 @@ class DiT(torch.nn.Module):
         self.patch_size = patch_size
         self.num_patches = grid_size // patch_size
 
-        self.position_embed = torch.zeros(1, self.num_patches * self.num_patches, d_model)
-        self.register_buffer("position_embed", self.position_embed)
+        self.pos_embed = torch.zeros(1, self.num_patches * self.num_patches, d_model)
+        self.register_buffer("position_embed", self.pos_embed)
 
         self.t_embed        = Timestep_Embedder(timestep_freq = timestep_freq, d_model = d_model)
         self.number_embed   = Fourier_Embedder(num_freqs = num_freq, d_model = d_model)
