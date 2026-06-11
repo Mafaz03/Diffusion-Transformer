@@ -82,7 +82,7 @@ def train_dit(model: DiT, vae: VAE, dataloader, scheduler: DDPM, latent_scale: f
 
             x_t, noise = scheduler.add_noise(z, t)
 
-            noise_pred = model(x_t, t.float(), numbers)
+            noise_pred = model(noisy_latent = x_t, time = t.float(), number = numbers)
 
             loss = torch.nn.functional.mse_loss(noise_pred, noise)
 
