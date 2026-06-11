@@ -68,7 +68,7 @@ class DiT(torch.nn.Module):
 
         self.pos_embed = torch.nn.Parameter(torch.zeros(1, self.num_patches * self.num_patches, d_model))
         torch.nn.init.normal_(self.pos_embed, std=0.02)
-        self.register_buffer("position_embed", self.pos_embed)
+        # self.register_buffer("position_embed", self.pos_embed)
 
         self.t_embed        = Timestep_Embedder(timestep_freq = timestep_freq, d_model = d_model)
         self.number_embed   = Fourier_Embedder(num_freqs = num_freq, d_model = d_model)
@@ -95,7 +95,7 @@ class DiT(torch.nn.Module):
         pixel_space = self.pixel_space_class(patchified_input = patchified_latents,  # [B, seq_len, embed_dim] -> [B, seq_len, embed_dim']
                           context = context)
 
-        unpatchified = Unpatchify(pixel_space = pixel_space, grid_size = self.grid_size, patch_size = self.patch_size) # [B, C, H, W]
+        unpatchified = Unpatchify(pixel_space = pixel_space, grid_size = self.grid_size, patch_size = self.patch_size, channels = 4) # [B, C, H, W]
         return unpatchified
     
 
