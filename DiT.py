@@ -43,13 +43,14 @@ class DiT_Block(torch.nn.Module):
         patchified_inputs_norm = patchified_inputs_norm * (1 + scale1.unsqueeze(1)) + shift1.unsqueeze(1)
         attn_outputs, _ = self.mha(patchified_inputs_norm, patchified_inputs_norm, patchified_inputs_norm) # self attention
 
-        patchified_inputs +=  gate1.unsqueeze(1) * attn_outputs
+        patchified_inputs = patchified_inputs + gate1.unsqueeze(1) * attn_outputs
+        
 
         # mlp block 
-        patchified_inputs_norm = self.layer_norm_1(patchified_inputs)
+        patchified_inputs_norm = self.layer_norm_2(patchified_inputs)
         patchified_inputs_norm = patchified_inputs_norm * (1 + scale2.unsqueeze(1)) + shift2.unsqueeze(1)
 
-        patchified_inputs +=  gate2.unsqueeze(1) * self.mlp(patchified_inputs_norm)
+        patchified_inputs = patchified_inputs + gate2.unsqueeze(1) * self.mlp(patchified_inputs_norm)
 
         return patchified_inputs
 
@@ -83,7 +84,7 @@ class DiT(torch.nn.Module):
         """
 
         patchified_latents = self.patchify(grid = noisy_latent)                      # [B, C, H, W] -> [B, seq_len, d_model]
-        patchified_latents += self.position_embed
+        patchified_latents = patchified_latents + self.position_embed
 
         context = self.t_embed(t = time) + self.number_embed(number = number)        # [B, d_model]
         for block in self.blocks:
