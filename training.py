@@ -17,6 +17,7 @@ from Scheduler import DDPM
 
 
 def train_vae(vae, dataloader, epochs=100, device = "cuda"):
+    vae.train()
     losses = []
     opt = torch.optim.Adam(vae.parameters(), lr=1e-4)
 
