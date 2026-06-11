@@ -1,0 +1,36 @@
+import torch
+
+class DDPM:
+    """
+    DDPM Scheduler
+    
+
+    # alphas = how much signal survives
+    # betas  = how much noise is injected
+
+    """
+
+    def __init__(self, betas_start, betas_end, max_timesteps: int = 1000):
+        self.max_timesteps = max_timesteps
+        self.betas = torch.linspace(betas_start, betas_end, max_timesteps) 
+
+        self.alphas = 1. - self.betas
+
+        self.alpha_bars_cumprod = torch.cumprod(self.alphas, dim=0)
+
+        self.alpha_bars_sqrt          = torch.sqrt(self.alpha_bars_cumprod)
+        self._1_minus_alpha_bars_sqrt = torch.sqrt(1 - self.alpha_bars_cumprod)
+
+    def add_noise(self, x0: torch.Tensor, t: torch.Tensor):
+        # x0: [B, C, H, W]
+        # t : [B, ]
+
+        noise = torch.randn_like(x0)
+        x_t = (self.alpha_bars_sqrt[t].view(-1, 1, 1, 1).to(x0.device) * x0) + (self._1_minus_alpha_bars_sqrt[t].view(-1, 1, 1, 1).to(x0.device) * noise)
+        return x_t, noise
+
+    def remove_noise(self, xt: torch.Tensor, t: torch.Tensor, noise: torch.Tensor):
+        # x0: [B, C, H, W]
+        # t : [B, ]
+
+        return (xt - (self._1_minus_alpha_bars_sqrt[t].view(-1, 1, 1, 1).to(xt.device) * noise)) / self._1_minus_alpha_bars_sqrt[t].view(-1, 1, 1, 1).to(xt.device)[t]
