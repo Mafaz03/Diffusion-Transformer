@@ -51,6 +51,8 @@ class PixelSpace(torch.nn.Module):
         torch.nn.init.zeros_(self.d_model_shrinker.weight)
         torch.nn.init.zeros_(self.d_model_shrinker.bias)
 
+        torch.nn.init.xavier_uniform_(self.d_model_shrinker.weight)
+
 
     def forward(self, patchified_input: torch.Tensor, context: torch.Tensor):
         shift, scale = self.adaLN(context).chunk(2, dim = -1)
