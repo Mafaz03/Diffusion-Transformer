@@ -93,6 +93,8 @@ def train_dit(
         p.requires_grad = False
  
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    scheduler_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-6)
+
     losses    = []
  
     for epoch in range(epochs):
@@ -123,6 +125,8 @@ def train_dit(
             optimizer.step()
  
             epoch_loss += loss.item()
+
+        scheduler_lr.step()
  
         avg = epoch_loss / len(dataloader)
         losses.append(avg)
