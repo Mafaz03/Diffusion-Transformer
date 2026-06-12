@@ -39,7 +39,6 @@ class dataset_imgs(Dataset):
         return len(self.all_pths)
 
     def __getitem__(self, index):
-        index = 0
         selected = self.all_pths[index]
 
         img = plt.imread(selected)
