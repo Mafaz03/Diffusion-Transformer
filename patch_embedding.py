@@ -51,7 +51,7 @@ class PixelSpace(torch.nn.Module):
         torch.nn.init.zeros_(self.d_model_shrinker.weight)
         torch.nn.init.zeros_(self.d_model_shrinker.bias)
 
-        torch.nn.init.xavier_uniform_(self.d_model_shrinker.weight)
+        # torch.nn.init.xavier_uniform_(self.d_model_shrinker.weight)
 
 
     def forward(self, patchified_input: torch.Tensor, context: torch.Tensor):
@@ -104,7 +104,7 @@ class Fourier_Embedder(torch.nn.Module):
         super().__init__()
 
         torch.manual_seed(42)
-        self.register_buffer("freqs", torch.randn(num_freqs) * 10)
+        self.register_buffer("freqs", torch.randn(num_freqs) * 1)
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * num_freqs, d_model),
             torch.nn.SiLU(),
