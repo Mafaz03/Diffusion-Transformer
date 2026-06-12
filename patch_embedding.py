@@ -46,12 +46,12 @@ class PixelSpace(torch.nn.Module):
         self.d_model_shrinker = torch.nn.Linear(d_model, channels * self.patch_size * self.patch_size)       # [B, seq_len, embed_dim] -> [B, seq_len, embed_dim']
 
 
-        torch.nn.init.zeros_(self.adaLN[-1].weight)
-        torch.nn.init.zeros_(self.adaLN[-1].bias)
-        torch.nn.init.zeros_(self.d_model_shrinker.weight)
-        torch.nn.init.zeros_(self.d_model_shrinker.bias)
+        # torch.nn.init.zeros_(self.adaLN[-1].weight)
+        # torch.nn.init.zeros_(self.adaLN[-1].bias)
+        # torch.nn.init.zeros_(self.d_model_shrinker.weight)
+        # torch.nn.init.zeros_(self.d_model_shrinker.bias)
 
-        torch.nn.init.xavier_uniform_(self.d_model_shrinker.weight)
+        # torch.nn.init.xavier_uniform_(self.d_model_shrinker.weight)
 
 
     def forward(self, patchified_input: torch.Tensor, context: torch.Tensor):
