@@ -105,7 +105,8 @@ def train_dit(
  
             with torch.no_grad():
                 mu, logvar = vae.encode(images)
-                z = vae.reparameterize(mu, logvar) / latent_scale  # unit variance
+                # z = vae.reparameterize(mu, logvar) / latent_scale  # unit variance
+                z = mu / latent_scale  # unit variance
  
             B = z.shape[0]
             t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
