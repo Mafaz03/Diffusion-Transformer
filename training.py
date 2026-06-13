@@ -124,7 +124,10 @@ def train_dit(
                 z = torch.clamp(z, -3.0, 3.0) # shortcut for now
  
             B = z.shape[0]
-            t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
+            # t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
+            p = torch.linspace(2.0, 1.0, scheduler.max_timesteps, device=device)  # low t gets 2x weight
+            p = p / p.sum()
+            t = torch.multinomial(p, B, replacement=True).to(dtype=torch.long)
  
             x_t, noise = scheduler.add_noise(z, t)
  
@@ -328,6 +331,9 @@ def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, latent_scale: flo
         x = scheduler.remove_noise(xt    = x, 
                                    t     = t, 
                                    noise = noise_pred)
+        
+        x          = torch.clamp(x, -3.0, 3.0)
+
         if torch.isnan(x).any():
             print("NaN at timestep:", t)
             break

@@ -1,4 +1,6 @@
 .DS_Store
 .env
 *.pt
+*.pth
 bing_ds/*
+flowers_dataset
