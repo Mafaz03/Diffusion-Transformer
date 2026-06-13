@@ -52,7 +52,7 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
 
             # Anneal KL weight from 0 -> 1e-4 over first 10k steps
             # to avoid posterior collapse early in training
-            kl_w = min(1e-4, step / 10_000 * 1e-4)
+            kl_w = min(1e-3, step / 10_000 * 1e-3)
             loss = vae_loss(recon, images, mu, logvar, kl_weight=kl_w)
             epoch_loss += loss.item()
 
