@@ -67,6 +67,17 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
     return losses
 
 
+def min_snr_weight(t, alpha_bars, gamma=5.0):
+    """
+    Min-SNR-gamma weighting from Hang et al. 2023.
+    Balances loss across all timesteps so low-t gets fair gradient signal.
+    """
+    snr = alpha_bars[t] / (1.0 - alpha_bars[t] + 1e-8)          # [B]
+    # clamp at gamma so high-SNR steps don't dominate
+    weight = torch.clamp(snr, max=gamma) / gamma                # [B]
+    return weight                                                  
+
+
 def train_dit(
     model:        DiT,
     vae:          VAE,
@@ -119,7 +130,11 @@ def train_dit(
  
             noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
  
-            loss = torch.nn.functional.mse_loss(noise_pred, noise)
+            # loss = torch.nn.functional.mse_loss(noise_pred, noise)
+
+            loss_per_sample = torch.nn.functional.mse_loss(noise_pred, noise, reduction='none').mean(dim=[1, 2, 3])  # [B]
+            weights = min_snr_weight(t, scheduler.alpha_bars_cumprod, gamma=5.0)
+            loss    = (weights * loss_per_sample).mean()
  
             optimizer.zero_grad()
             loss.backward()
