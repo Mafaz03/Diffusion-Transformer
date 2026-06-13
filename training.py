@@ -151,6 +151,87 @@ def train_dit(
  
     return losses
 
+
+def train_dit_stratified_t(
+    model:        DiT,
+    vae:          VAE,
+    dataloader:   DataLoader,
+    scheduler:    DDPM,
+    latent_scale: float,
+    epochs:       int   = 10,
+    lr:           float = 1e-4,
+    device:       str   = "cuda",
+):
+    model.to(device)
+    vae.to(device)
+
+    scheduler.betas                    = scheduler.betas.to(device)
+    scheduler.alphas                   = scheduler.alphas.to(device)
+    scheduler.alpha_bars_cumprod       = scheduler.alpha_bars_cumprod.to(device)
+    scheduler.alpha_bars_sqrt          = scheduler.alpha_bars_sqrt.to(device)
+    scheduler._1_minus_alpha_bars_sqrt = scheduler._1_minus_alpha_bars_sqrt.to(device)
+
+    vae.eval()
+    for p in vae.parameters():
+        p.requires_grad = False
+
+    # Cache ALL latents once — no VAE calls during training
+    print("Caching latents...")
+    cached = []
+    with torch.no_grad():
+        for images, _x_t, _noise, _t, numbers in dataloader:
+            mu, _ = vae.encode(images.to(device))
+            z = torch.clamp(mu / latent_scale, -3.0, 3.0)
+            cached.append((z.cpu(), numbers))
+    print(f"Cached {len(cached)} batches.")
+
+    optimizer  = torch.optim.AdamW(model.parameters(), lr=lr)
+    scheduler_lr = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=epochs, eta_min=1e-6
+    )
+
+    losses = []
+
+    for epoch in range(epochs):
+        model.train()
+        epoch_loss = 0.0
+
+        for _ in range(5):                          # 5 passes per epoch
+            for z, numbers in cached:
+                z       = z.to(device)
+                numbers = numbers.float().to(device)
+                B       = z.shape[0]
+
+                # Stratified t sampling
+                sections = torch.linspace(0, scheduler.max_timesteps, B + 1).long()
+                t = torch.tensor([torch.randint(sections[i], sections[i + 1], (1,)).item() for i in range(B)], device=device, dtype=torch.long) # tensor([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])
+
+                x_t, noise = scheduler.add_noise(z, t)
+                noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
+
+                # Min-SNR weighted loss
+                loss_per = torch.nn.functional.mse_loss(
+                    noise_pred, noise, reduction='none'
+                ).mean(dim=[1, 2, 3])
+                weights  = min_snr_weight(t, scheduler.alpha_bars_cumprod, gamma=5.0)
+                loss     = (weights * loss_per).mean()
+
+                optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+
+                epoch_loss += loss.item()
+
+        scheduler_lr.step()
+
+        total_steps = len(cached) * 5
+        avg = epoch_loss / total_steps
+        losses.append(avg)
+        print(f"[DiT] Epoch {epoch+1}/{epochs}  loss={avg:.6f}")
+
+    return losses
+
 def train_joint(
     model:        DiT,
     vae:          VAE,
