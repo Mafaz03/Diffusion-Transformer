@@ -109,6 +109,8 @@ def train_dit(
                 mu, logvar = vae.encode(images)
                 # z = vae.reparameterize(mu, logvar) / latent_scale  # unit variance
                 z = mu / latent_scale  # unit variance
+
+                z = torch.clamp(z, -3.0, 3.0) # shortcut for now
  
             B = z.shape[0]
             t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
