@@ -80,6 +80,8 @@ class DiT(torch.nn.Module):
         
         self.pixel_space_class = PixelSpace(d_model = d_model, channels = channels, patch_size = patch_size)
 
+        self.context_proj = torch.nn.Linear(2*d_model, d_model)
+
     def forward(self, noisy_latent: torch.Tensor, number: torch.Tensor, time: torch.Tensor):
         """
         noisy_latent: [B, C, H, W]  noisy latent
@@ -90,8 +92,12 @@ class DiT(torch.nn.Module):
         patchified_latents = self.patchify(grid = noisy_latent)                      # [B, C, H, W] -> [B, seq_len, d_model]
         patchified_latents = patchified_latents + self.pos_embed
 
+        t_embed = self.t_embed(t = time)                           # [B, d_model]
+        number_embed = self.number_embed(number = number)          # [B, d_model]
 
-        context = self.t_embed(t = time) + self.number_embed(number = number)        # [B, d_model]
+        context = torch.cat([t_embed, number_embed],dim=-1)
+        context = self.context_proj(context)
+        
         for block in self.blocks:
             patchified_latents = block(patchified_inputs = patchified_latents, 
                                        context = context)                            # [B, seq_len, d_model]
