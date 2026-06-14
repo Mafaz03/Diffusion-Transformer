@@ -122,7 +122,7 @@ class NumberEmbedder(nn.Module):
     def __init__(self, d_model=768):
         super().__init__()
 
-        self.embedding = nn.Embedding(num_embeddings=100, embedding_dim=d_model)
+        self.embedding = nn.Embedding(num_embeddings=100, embedding_dim = d_model)
 
     def forward(self, number):
         return self.embedding(number.long())

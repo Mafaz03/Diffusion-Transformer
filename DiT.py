@@ -74,7 +74,7 @@ class DiT(torch.nn.Module):
 
         self.t_embed        = Timestep_Embedder(timestep_freq = timestep_freq, d_model = d_model)
         # self.number_embed   = Fourier_Embedder(num_freqs = num_freq, d_model = d_model)
-        self.number_embed   = NumberEmbedder(d_model=768)
+        self.number_embed   = NumberEmbedder(d_model = d_model)
 
         self.blocks         = torch.nn.ModuleList([DiT_Block(d_model = d_model, num_heads = num_heads) for _ in range(num_DiT_blocks)])
         
