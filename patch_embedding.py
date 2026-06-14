@@ -95,28 +95,37 @@ class Timestep_Embedder(torch.nn.Module):
 
 
 
-class Fourier_Embedder(torch.nn.Module):
-    """
-    Single number input -> embedding
-    """
+# class Fourier_Embedder(torch.nn.Module):
+#     """
+#     Single number input -> embedding
+#     """
 
-    def __init__(self, num_freqs = 128, d_model: int = 768):
+#     def __init__(self, num_freqs = 128, d_model: int = 768):
+#         super().__init__()
+
+#         torch.manual_seed(42)
+#         self.register_buffer("freqs", torch.randn(num_freqs) * 1)
+#         self.mlp = torch.nn.Sequential(
+#             torch.nn.Linear(2 * num_freqs, d_model),
+#             torch.nn.SiLU(),
+#             torch.nn.Linear(d_model, d_model)
+#         )
+
+#     def forward(self, number):
+#         # number: [B, ]
+#         x = number.unsqueeze(1) * self.freqs.unsqueeze(0)
+#         x = torch.cat([torch.sin(x), torch.cos(x)], dim = -1) # [B, 2 * num_freqs]
+#         return self.mlp(x)                                    # [B, d_model]
+    
+
+class NumberEmbedder(nn.Module):
+    def __init__(self, d_model=768):
         super().__init__()
 
-        torch.manual_seed(42)
-        self.register_buffer("freqs", torch.randn(num_freqs) * 1)
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * num_freqs, d_model),
-            torch.nn.SiLU(),
-            torch.nn.Linear(d_model, d_model)
-        )
+        self.embedding = nn.Embedding(num_embeddings=100, embedding_dim=d_model)
 
     def forward(self, number):
-        # number: [B, ]
-        x = number.unsqueeze(1) * self.freqs.unsqueeze(0)
-        x = torch.cat([torch.sin(x), torch.cos(x)], dim = -1) # [B, 2 * num_freqs]
-        return self.mlp(x)                                    # [B, d_model]
-    
+        return self.embedding(number.long())
 
 def Unpatchify(pixel_space: torch.Tensor, grid_size: int = 32, patch_size: int = 2, channels: int = 4):
     # pixel_space: [B, seq_len, C*p^2]

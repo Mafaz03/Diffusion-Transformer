@@ -28,8 +28,10 @@ class DiT_Block(torch.nn.Module):
         # gate2           — gate on MLP output
 
         # Zero-init the final linear so blocks start as identity
-        torch.nn.init.zeros_(self.adaLN[-1].weight)
-        torch.nn.init.zeros_(self.adaLN[-1].bias)
+        # torch.nn.init.zeros_(self.adaLN[-1].weight)
+        # torch.nn.init.zeros_(self.adaLN[-1].bias)
+
+        torch.nn.init.normal_(self.adaLN[-1].weight, std=1e-3)
 
     
     def forward(self, patchified_inputs: torch.Tensor, context: torch.Tensor):
@@ -71,7 +73,8 @@ class DiT(torch.nn.Module):
         # self.register_buffer("position_embed", self.pos_embed)
 
         self.t_embed        = Timestep_Embedder(timestep_freq = timestep_freq, d_model = d_model)
-        self.number_embed   = Fourier_Embedder(num_freqs = num_freq, d_model = d_model)
+        # self.number_embed   = Fourier_Embedder(num_freqs = num_freq, d_model = d_model)
+        self.number_embed   = NumberEmbedder(d_model=768)
 
         self.blocks         = torch.nn.ModuleList([DiT_Block(d_model = d_model, num_heads = num_heads) for _ in range(num_DiT_blocks)])
         
