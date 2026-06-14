@@ -124,10 +124,7 @@ def train_dit(
                 z = torch.clamp(z, -3.0, 3.0) # shortcut for now
  
             B = z.shape[0]
-            # t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
-            p = torch.linspace(2.0, 1.0, scheduler.max_timesteps, device=device)  # low t gets 2x weight
-            p = p / p.sum()
-            t = torch.multinomial(p, B, replacement=True).to(dtype=torch.long)
+            t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
  
             x_t, noise = scheduler.add_noise(z, t)
  
@@ -184,9 +181,12 @@ def train_dit_stratified_t(
     with torch.no_grad():
         for images, _x_t, _noise, _t, numbers in dataloader:
             mu, _ = vae.encode(images.to(device))
-            z = torch.clamp(mu / latent_scale, -3.0, 3.0)
+            # z = torch.clamp(mu / latent_scale, -3.0, 3.0)
+            z = mu / latent_scale
             cached.append((z.cpu(), numbers))
     print(f"Cached {len(cached)} batches.")
+    print(f"Cached {len(cached)} batches, {sum(z.shape[0] for z,_ in cached)} total latents")
+
 
     optimizer  = torch.optim.AdamW(model.parameters(), lr=lr)
     scheduler_lr = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -207,7 +207,11 @@ def train_dit_stratified_t(
 
                 # Stratified t sampling
                 sections = torch.linspace(0, scheduler.max_timesteps, B + 1).long()
-                t = torch.tensor([torch.randint(sections[i], sections[i + 1], (1,)).item() for i in range(B)], device=device, dtype=torch.long) # tensor([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])
+                # t = torch.tensor([torch.randint(sections[i], sections[i + 1], (1,)).item() for i in range(B)], device=device, dtype=torch.long) # tensor([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])
+                
+                p = torch.linspace(2.0, 1.0, scheduler.max_timesteps, device=device)  # low t gets 2x weight
+                p = p / p.sum()
+                t = torch.multinomial(p, B, replacement=True).to(dtype=torch.long)
 
                 x_t, noise = scheduler.add_noise(z, t)
                 noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
