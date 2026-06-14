@@ -121,7 +121,7 @@ def train_dit(
                 # z = vae.reparameterize(mu, logvar) / latent_scale  # unit variance
                 z = mu / latent_scale  # unit variance
 
-                z = torch.clamp(z, -3.0, 3.0) # shortcut for now
+                # z = torch.clamp(z, -3.0, 3.0) # shortcut for now
  
             B = z.shape[0]
             t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
@@ -130,11 +130,11 @@ def train_dit(
  
             noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
  
-            # loss = torch.nn.functional.mse_loss(noise_pred, noise)
+            loss = torch.nn.functional.mse_loss(noise_pred, noise)
 
-            loss_per_sample = torch.nn.functional.mse_loss(noise_pred, noise, reduction='none').mean(dim=[1, 2, 3])  # [B]
-            weights = min_snr_weight(t, scheduler.alpha_bars_cumprod, gamma=5.0)
-            loss    = (weights * loss_per_sample).mean()
+            # loss_per_sample = torch.nn.functional.mse_loss(noise_pred, noise, reduction='none').mean(dim=[1, 2, 3])  # [B]
+            # weights = min_snr_weight(t, scheduler.alpha_bars_cumprod, gamma=5.0)
+            # loss    = (weights * loss_per_sample).mean()
  
             optimizer.zero_grad()
             loss.backward()
@@ -336,7 +336,7 @@ def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, latent_scale: flo
                                    t     = t, 
                                    noise = noise_pred)
         
-        x          = torch.clamp(x, -3.0, 3.0)
+        # x          = torch.clamp(x, -3.0, 3.0)
 
         if torch.isnan(x).any():
             print("NaN at timestep:", t)
