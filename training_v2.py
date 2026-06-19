@@ -10,7 +10,7 @@ from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 from img_dataloader import dataset_imgs
 
-from DiT import DiT
+from DiT import DiT_v2
 from Scheduler import DDPM
 
 
@@ -79,7 +79,7 @@ def min_snr_weight(t, alpha_bars, gamma=5.0):
 
 
 def train_dit(
-    model:        DiT,
+    model:        DiT_v2,
     vae:          VAE,
     dataloader:   DataLoader,
     scheduler:    DDPM,
