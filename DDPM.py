@@ -82,9 +82,9 @@ def sample_v2(latent_grid_size: int, dit, vae, device, scheduler):
             g = xt
             g = xt[:, :-1, :, :]
         
-        g = torch.clamp(g, -1., 1.).detach().cpu()
-        g = (g + 1) / 2
+    g = torch.clamp(g, -1., 1.).detach().cpu()
+    g = (g + 1) / 2
 
-        grid = make_grid(g, nrow = 2)
-        img = torchvision.transforms.ToPILImage()(grid)
-        return img
+    grid = make_grid(g, nrow = 2)
+    img = torchvision.transforms.ToPILImage()(grid)
+    return img
