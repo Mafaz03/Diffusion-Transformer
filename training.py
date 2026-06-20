@@ -37,7 +37,7 @@ def compute_latent_scale(vae: VAE, dataloader: DataLoader, device: str, n_batche
     return scale
 
 
-def train_vae(vae, dataloader, epochs=100, device = "cuda"):
+def train_vae(vae, dataloader, acc_steps, epochs=100, device = "cuda"):
     vae.train()
     losses = []
     opt = torch.optim.Adam(vae.parameters(), lr=1e-4)
@@ -46,6 +46,7 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
 
     for epoch in range(epochs):
         epoch_loss = 0
+        step_count = 0
         for images, x_t, noise, t, number in dataloader:
             images = images.to(device)
             recon, mu, logvar = vae(images)
@@ -56,11 +57,14 @@ def train_vae(vae, dataloader, epochs=100, device = "cuda"):
             loss = vae_loss(recon, images, mu, logvar, kl_weight=kl_w)
             epoch_loss += loss.item()
 
-            opt.zero_grad()
             loss.backward()
-            opt.step()
+            if step_count % acc_steps == 0:
+
+                opt.step()
+                opt.zero_grad()
 
             step += 1
+            step_count += 1
         
         losses.append(epoch_loss/len(dataloader))
         print(f"Epoch: {epoch} / {epochs} => loss: {epoch_loss/len(dataloader):.5f}")
