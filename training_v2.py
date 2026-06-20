@@ -43,7 +43,7 @@ import torchvision
 # dit.train()
 
 
-def train(epochs, dataloader, dit, vae, scheduler, device):
+def train(epochs, dataloader, dit, vae, scheduler, device, acc_steps):
     optimizer = AdamW(dit.parameters(), lr=1E-5, weight_decay=0)
     loss_fn   = torch.nn.MSELoss()
 
@@ -53,7 +53,9 @@ def train(epochs, dataloader, dit, vae, scheduler, device):
     losses = []
     for epoch in range(epochs):
         epoch_loss = 0.0
+        step_count = 0
         for images, _x_t, _noise, _t, numbers in dataloader:
+            step_count += 1
             images  = images.to(device)
             # numbers = numbers.float().to(device)
 
@@ -71,10 +73,11 @@ def train(epochs, dataloader, dit, vae, scheduler, device):
 
             pred = dit(noisy_im, t)
             loss = loss_fn(pred, noise)
-            
+            loss = loss / acc_steps
             loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+            if step_count % acc_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
 
             epoch_loss += loss.item()
         avg = epoch_loss / len(dataloader)
