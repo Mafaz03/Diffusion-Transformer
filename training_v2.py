@@ -1,265 +1,83 @@
-
 import torch
-import matplotlib.pyplot as plt
-import cv2
-
-from VAE import VAE, vae_loss
-
+import yaml
+import argparse
+import os
+import numpy as np
 from tqdm import tqdm
-
-from torch.utils.data import Dataset, DataLoader
+from torch.optim import AdamW
+from torch.utils.data import DataLoader
+from DiT_v2 import DiT
+from VAE import VAE
+from DDPM import LinearNoiseScheduler
 from img_dataloader import dataset_imgs
 
-from DiT import DiT_v2
-from Scheduler import DDPM
+from torchvision.utils import make_grid
+import torchvision
 
 
-def compute_latent_scale(vae: VAE, dataloader: DataLoader, device: str, n_batches: int = 50) -> float:
-    """
-    Compute the empirical std of the VAE latent space so DiT trains
-    on unit-variance latents.
- 
-    latent_scale  ->  z_scaled = z / latent_scale  (std approx 1)
-    At sampling   ->  z        = z_scaled * latent_scale  before decode
-    """
-    vae.eval()
-    all_stds = []
-    with torch.no_grad():
-        for i, (images, *_ ) in enumerate(dataloader):
-            if i >= n_batches:
-                break
-            images = images.to(device)
-            mu, logvar = vae.encode(images)
-            z = vae.reparameterize(mu, logvar)
-            all_stds.append(z.std().item())
-    scale = float(torch.tensor(all_stds).mean())
-    print(f"[latent_scale] empirical latent std = {scale:.4f}")
-    return scale
+# num_timesteps = 1000
+# beta_start    = 0.0001
+# beta_end      = 0.02
 
 
-def train_vae(vae, dataloader, epochs=100, device = "cuda"):
-    vae.train()
+# scheduler = LinearNoiseScheduler(num_timesteps  = num_timesteps,
+#                                      beta_start = beta_start,
+#                                      beta_end   = beta_end)
+
+
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# vae = VAE(ch = 128, latent_channels = 4).to(device)
+
+
+# dit = DiT(d_model        = 256,
+#           g_channels       = 4,
+#           grid_size      = 32,
+#           patch_size     = 4,
+#           timestep_emb_dim  = 128,
+#         #   num_freq       = 128,
+#           num_layers     = 8,
+#           num_heads      = 4)
+
+# vae.eval()
+# dit.train()
+
+
+def train(epochs, dataloader, dit, vae, scheduler, device):
+    optimizer = AdamW(dit.parameters(), lr=1E-5, weight_decay=0)
+    loss_fn   = torch.nn.MSELoss()
+
+    for param in vae.parameters():
+        param.requires_grad = False
+
     losses = []
-    opt = torch.optim.Adam(vae.parameters(), lr=1e-4)
-
-    step = 0
-
     for epoch in range(epochs):
-        epoch_loss = 0
-        for images, x_t, noise, t, number in dataloader:
-            images = images.to(device)
-            recon, mu, logvar = vae(images)
-
-            # Anneal KL weight from 0 -> 1e-4 over first 10k steps
-            # to avoid posterior collapse early in training
-            kl_w = min(1e-3, step / 10_000 * 1e-3)
-            loss = vae_loss(recon, images, mu, logvar, kl_weight=kl_w)
-            epoch_loss += loss.item()
-
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-
-            step += 1
-        
-        losses.append(epoch_loss/len(dataloader))
-        print(f"Epoch: {epoch} / {epochs} => loss: {epoch_loss/len(dataloader):.5f}")
-    return losses
-
-
-def min_snr_weight(t, alpha_bars, gamma=5.0):
-    """
-    Min-SNR-gamma weighting from Hang et al. 2023.
-    Balances loss across all timesteps so low-t gets fair gradient signal.
-    """
-    snr = alpha_bars[t] / (1.0 - alpha_bars[t] + 1e-8)          # [B]
-    # clamp at gamma so high-SNR steps don't dominate
-    weight = torch.clamp(snr, max=gamma) / gamma                # [B]
-    return weight                                                  
-
-
-def train_dit(
-    model:        DiT_v2,
-    vae:          VAE,
-    dataloader:   DataLoader,
-    scheduler:    DDPM,
-    latent_scale: float,
-    epochs:       int   = 10,
-    lr:           float = 1e-4,
-    device:       str   = "cuda",
-):
-    model.to(device)
-    vae.to(device)
- 
-    
-    scheduler.betas                  = scheduler.betas.to(device)
-    scheduler.alphas                 = scheduler.alphas.to(device)
-    scheduler.alpha_bars_cumprod     = scheduler.alpha_bars_cumprod.to(device)
-    scheduler.alpha_bars_sqrt        = scheduler.alpha_bars_sqrt.to(device)
-    scheduler._1_minus_alpha_bars_sqrt = scheduler._1_minus_alpha_bars_sqrt.to(device)
- 
-    # Freeze VAE
-    vae.eval()
-    for p in vae.parameters():
-        p.requires_grad = False
- 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-    scheduler_lr = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = epochs, eta_min = 1e-6)
-
-    losses    = []
- 
-    for epoch in range(epochs):
-        model.train()
         epoch_loss = 0.0
- 
         for images, _x_t, _noise, _t, numbers in dataloader:
             images  = images.to(device)
-            numbers = numbers.float().to(device)
- 
+            # numbers = numbers.float().to(device)
+
             with torch.no_grad():
                 mu, logvar = vae.encode(images)
-                # z = vae.reparameterize(mu, logvar) / latent_scale  # unit variance
-                z = mu / latent_scale  # unit variance
+                z = vae.reparameterize(mu, logvar)
 
-                # z = torch.clamp(z, -3.0, 3.0) # shortcut for now
- 
-            B = z.shape[0]
-            t = torch.randint(0, scheduler.max_timesteps, (B,), device=device, dtype=torch.long)
- 
-            x_t, noise = scheduler.add_noise(z, t)
- 
-            noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
- 
-            loss = torch.nn.functional.mse_loss(noise_pred, noise)
+            # Sample random noise
+            noise = torch.randn_like(z).to(device)
 
-            optimizer.zero_grad()
+            # Sample timestep
+            t = torch.randint(0, 1000,(z.shape[0],)).to(device)
+
+            noisy_im = scheduler.add_noise(z, noise, t)
+
+            pred = dit(noisy_im, t)
+            loss = loss_fn(pred, noise)
+            
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
- 
-            epoch_loss += loss.item()
+            optimizer.zero_grad()
 
-        scheduler_lr.step()
- 
+            epoch_loss += loss.item()
         avg = epoch_loss / len(dataloader)
         losses.append(avg)
         print(f"[DiT] Epoch {epoch+1}/{epochs}  loss={avg:.6f}")
- 
     return losses
-
-
-def train_dit_stratified_t(
-    model:        DiT,
-    vae:          VAE,
-    dataloader:   DataLoader,
-    scheduler:    DDPM,
-    latent_scale: float,
-    epochs:       int   = 10,
-    lr:           float = 1e-4,
-    device:       str   = "cuda",
-):
-    model.to(device)
-    vae.to(device)
-
-    scheduler.betas                    = scheduler.betas.to(device)
-    scheduler.alphas                   = scheduler.alphas.to(device)
-    scheduler.alpha_bars_cumprod       = scheduler.alpha_bars_cumprod.to(device)
-    scheduler.alpha_bars_sqrt          = scheduler.alpha_bars_sqrt.to(device)
-    scheduler._1_minus_alpha_bars_sqrt = scheduler._1_minus_alpha_bars_sqrt.to(device)
-
-    vae.eval()
-    for p in vae.parameters():
-        p.requires_grad = False
-
-    # Cache ALL latents once — no VAE calls during training
-    print("Caching latents...")
-    cached = []
-    with torch.no_grad():
-        for images, _x_t, _noise, _t, numbers in dataloader:
-            mu, _ = vae.encode(images.to(device))
-            # z = torch.clamp(mu / latent_scale, -3.0, 3.0)
-            z = mu / latent_scale
-            cached.append((z.cpu(), numbers))
-    print(f"Cached {len(cached)} batches.")
-    print(f"Cached {len(cached)} batches, {sum(z.shape[0] for z,_ in cached)} total latents")
-
-
-    optimizer  = torch.optim.AdamW(model.parameters(), lr=lr)
-    scheduler_lr = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=epochs, eta_min=1e-6
-    )
-
-    losses = []
-
-    for epoch in range(epochs):
-        model.train()
-        epoch_loss = 0.0
-
-        for _ in range(5):                          # 5 passes per epoch
-            for z, numbers in cached:
-                z       = z.to(device)
-                numbers = numbers.float().to(device)
-                B       = z.shape[0]
-
-                # Stratified t sampling
-                sections = torch.linspace(0, scheduler.max_timesteps, B + 1).long()
-                # t = torch.tensor([torch.randint(sections[i], sections[i + 1], (1,)).item() for i in range(B)], device=device, dtype=torch.long) # tensor([   0,  100,  200,  300,  400,  500,  600,  700,  800,  900, 1000])
-                
-                p = torch.linspace(2.0, 1.0, scheduler.max_timesteps, device=device)  # low t gets 2x weight
-                p = p / p.sum()
-                t = torch.multinomial(p, B, replacement=True).to(dtype=torch.long)
-
-                x_t, noise = scheduler.add_noise(z, t)
-                noise_pred = model(noisy_latent=x_t, time=t, number=numbers)
-
-                # Min-SNR weighted loss
-                loss_per = torch.nn.functional.mse_loss(
-                    noise_pred, noise, reduction='none'
-                ).mean(dim=[1, 2, 3])
-                weights  = min_snr_weight(t, scheduler.alpha_bars_cumprod, gamma=5.0)
-                loss     = (weights * loss_per).mean()
-
-                optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step()
-
-                epoch_loss += loss.item()
-
-        scheduler_lr.step()
-
-        total_steps = len(cached) * 5
-        avg = epoch_loss / total_steps
-        losses.append(avg)
-        print(f"[DiT] Epoch {epoch+1}/{epochs}  loss={avg:.6f}")
-
-    return losses
-
-@torch.no_grad()
-def sample_from_dit(model, vae: VAE, n_value, scheduler: DDPM, latent_scale: float, img_size = 256, device='cuda'):
-    """Generate an image conditioned on a specific number."""
-
-    model.eval()
-    vae.eval()
-
-    # Start from pure noise
-    x = torch.randn(1, 4, img_size // 8, img_size // 8, device=device)
-    n = torch.tensor([n_value], dtype=torch.float32, device=device)
-
-    for t in tqdm(reversed(range(scheduler.max_timesteps)), total=scheduler.max_timesteps):
-        t_batch    = torch.tensor([t], device=device, dtype=torch.long)
-        noise_pred = model(noisy_latent = x, time = t_batch, number = n)
-        
-        x = scheduler.remove_noise(xt    = x, 
-                                   t     = t, 
-                                   noise = noise_pred)
-        
-        # x          = torch.clamp(x, -3.0, 3.0)
-
-        if torch.isnan(x).any():
-            print("NaN at timestep:", t)
-            break
-
-    # Decode latent -> image
-    image = vae.decode(x * latent_scale)
-    return image

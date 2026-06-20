@@ -194,7 +194,7 @@ class PatchEmbedding(torch.nn.Module):
         out += pos_embed
         return out # [B, grid_height/patch_height * grid_width/patch_width, d_model]
     
-class DIT(torch.nn.Module):
+class DiT(torch.nn.Module):
     def __init__(self, d_model, patch_size, grid_size, g_channels, timestep_emb_dim, num_layers, num_heads):
         super().__init__()
 
@@ -290,7 +290,7 @@ class DIT(torch.nn.Module):
         return out
     
 if __name__ == "__main__":
-    dit = DIT(d_model          = 512,
+    dit = DiT(d_model          = 512,
             patch_size       = 2,
             grid_size        = 32,
             g_channels       = 4,

@@ -92,10 +92,10 @@ def train_dit(
     vae.to(device)
  
     
-    scheduler.betas                  = scheduler.betas.to(device)
-    scheduler.alphas                 = scheduler.alphas.to(device)
-    scheduler.alpha_bars_cumprod     = scheduler.alpha_bars_cumprod.to(device)
-    scheduler.alpha_bars_sqrt        = scheduler.alpha_bars_sqrt.to(device)
+    scheduler.betas                    = scheduler.betas.to(device)
+    scheduler.alphas                   = scheduler.alphas.to(device)
+    scheduler.alpha_bars_cumprod       = scheduler.alpha_bars_cumprod.to(device)
+    scheduler.alpha_bars_sqrt          = scheduler.alpha_bars_sqrt.to(device)
     scheduler._1_minus_alpha_bars_sqrt = scheduler._1_minus_alpha_bars_sqrt.to(device)
  
     # Freeze VAE
