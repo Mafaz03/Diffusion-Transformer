@@ -1,4 +1,5 @@
 import torch
+from diffusers.models import AutoencoderKL
 
 class ResBlock(torch.nn.Module):
     def __init__(self, channels):
@@ -95,22 +96,60 @@ class Decoder(torch.nn.Module):
     
 
 
+# class VAE(torch.nn.Module):
+#     def __init__(self, ch = 128, latent_channels = 4):
+#         super().__init__()
+
+#         self.encoder = Encoder(ch = ch, latent_channels = latent_channels)
+#         self.decoder = Decoder(ch = ch, latent_channels = latent_channels)
+
+#     def encode(self, normal_grid):
+#         mu, logvar = self.encoder(normal_grid)
+#         return mu, logvar
+    
+#     def decode(self, compressed_grid):
+#         reconstructed_grid = self.decoder(compressed_grid)
+#         return reconstructed_grid
+
+#     def reparameterize(self, mu, logvar):
+#         std = torch.exp(0.5 * logvar)
+#         eps = torch.randn_like(std)
+#         return mu + std * eps
+
+#     def forward(self, grid):
+#         mu, logvar = self.encode(normal_grid = grid)        # each [B, 4, H/8, W/8]
+#         z = self.reparameterize(mu = mu, logvar = logvar)   # sampling from gausian distribution
+#         recon_grid = self.decode(compressed_grid = z)
+    
+
+SD_VAE_SCALING_FACTOR = 0.18215  
+
 class VAE(torch.nn.Module):
-    def __init__(self, ch = 128, latent_channels = 4):
+    def __init__(self, device, freeze: bool, scaling_factor = None, path = "stabilityai/sd-vae-ft-mse"):
         super().__init__()
 
-        self.encoder = Encoder(ch = ch, latent_channels = latent_channels)
-        self.decoder = Decoder(ch = ch, latent_channels = latent_channels)
+        self.vae = AutoencoderKL.from_pretrained(path)
+        self.vae = self.vae.to(device)
+
+        self.scaling_factor = SD_VAE_SCALING_FACTOR if not scaling_factor else scaling_factor
+
+        if freeze:
+            self.vae.eval()
+            for p in self.vae.parameters():
+                p.requires_grad = False
 
     def encode(self, normal_grid):
-        mu, logvar = self.encoder(normal_grid)
+        posterior = self.vae.encode(normal_grid).latent_dist
+        mu     = posterior.mean   * self.scaling_factor
+        logvar = posterior.logvar + 2 * torch.log(torch.tensor(self.scaling_factor, device=normal_grid.device))
         return mu, logvar
-    
+
     def decode(self, compressed_grid):
-        reconstructed_grid = self.decoder(compressed_grid)
+        z = compressed_grid / self.scaling_factor
+        reconstructed_grid = self.vae.decode(z)
         return reconstructed_grid
 
-    def reparameterize(self, mu, logvar):
+    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + std * eps
@@ -119,7 +158,7 @@ class VAE(torch.nn.Module):
         mu, logvar = self.encode(normal_grid = grid)        # each [B, 4, H/8, W/8]
         z = self.reparameterize(mu = mu, logvar = logvar)   # sampling from gausian distribution
         recon_grid = self.decode(compressed_grid = z)
-    
+        return recon_grid.sample
 def vae_loss(recon, x, mu, logvar, kl_weight=1e-4):
     """
     - Reconstruction: how well the decoder rebuilds the input
