@@ -4,18 +4,6 @@ from einops import rearrange
 
 
 class TransformerLayer(torch.nn.Module):
-    r"""
-    Transformer block which is just doing the following based on VIT
-        1. LayerNorm followed by Attention
-        2. LayerNorm followed by Feed forward Block
-        Both these also have residuals added to them
-
-        For DiT we additionally have
-        1. Layernorm mlp to predict layernorm affine parameters from
-        2. Same Layernorm mlp to also predict scale parameters for outputs
-            of both mlp/attention prior to residual connection.
-    """
-
     def __init__(self, d_model: int, num_heads: int):
         super().__init__()
         self.d_model = d_model
@@ -85,13 +73,7 @@ class TransformerLayer(torch.nn.Module):
 
 
 def get_time_embedding(time_steps, temb_dim):
-    r"""
-    Convert time steps tensor into an embedding using the
-    sinusoidal time embedding formula
-    :param time_steps: 1D tensor of length batch size
-    :param temb_dim: Dimension of the embedding
-    :return: BxD embedding representation of B time steps
-    """
+
     assert temb_dim % 2 == 0, "time embedding dimension must be divisible by 2"
 
     # factor = 10000^(2i/d_model)
@@ -145,14 +127,6 @@ def get_patch_position_embedding(pos_emb_dim, grid_size: Tuple, device):
 
 
 class PatchEmbedding(torch.nn.Module):
-    r"""
-    Layer to take in the input image and do the following:
-        1.  Transform grid of image patches into a sequence of patches.
-            Number of patches are decided based on image height,width and
-            patch height, width.
-        2. Add positional embedding to the above sequence
-    """
-
     def __init__(self, grid_height, grid_width, g_channels, patch_height, patch_width, d_model):
         super().__init__()
         self.grid_height = grid_height
