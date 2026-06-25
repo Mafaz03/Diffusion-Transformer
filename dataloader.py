@@ -3,17 +3,17 @@ from torch.utils.data import Dataset, DataLoader
 from datasets import load_dataset
 
 from torchvision import transforms
+from Scheduler import DDPM
+
+from PIL import Image
+import os
 
 
-class dataset_celebhq(Dataset):
+class dataset(Dataset):
     """
-    CelebA-HQ 256x256 dataset, streamed via HuggingFace `datasets` so it
-    works out of the box on Colab (no manual download/upload needed).
-
-    Unconditional — there's no per-image numeric label in CelebHQ, so
     `number` is just a dummy 0.0 placeholder. This keeps the return
     signature identical to dataset_imgs (img, x_t, noise, t, number) so
-    it's a drop-in replacement in your training loop.
+    it's a drop-in replacement in training loop.
     """
 
     def __init__(self,
@@ -21,12 +21,21 @@ class dataset_celebhq(Dataset):
                  betas_start: float = 1e-4,
                  betas_end: float = 0.02,
                  max_timesteps: int = 1000,
-                 hf_dataset_name: str = "korexyz/celeba-hq-256x256"):
+                 hf_dataset_name: str = "korexyz/celeba-hq-256x256",
+                 dataset_root: str = None):
 
-        # Downloads + caches automatically (~/.cache/huggingface) — no
-        # manual file upload needed, survives across Colab cells but not
-        # across sessions unless you mount Drive over the cache dir.
-        self.ds = load_dataset(hf_dataset_name, split=split)
+
+        
+        self.dataset_root = dataset_root
+        if dataset_root is not None:
+            self.image_paths = [
+                os.path.join(dataset_root, f)
+                for f in os.listdir(dataset_root)
+                if f.endswith((".jpg", ".png", ".jpeg"))
+            ]
+
+        else:
+            self.ds = load_dataset(hf_dataset_name, split=split)
 
         self.transform = transforms.Compose([
             transforms.ToTensor(),
@@ -34,22 +43,26 @@ class dataset_celebhq(Dataset):
             transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),  # -> [-1, 1]
         ])
 
-        # Kept for parity with dataset_imgs / your DDPM-on-pixel-space
-        # pre-noising step. train_dit ignores these and renoises the
-        # latent itself, so this is mostly here so the tuple shape matches.
-        from Scheduler import DDPM
         self.ddpm = DDPM(betas_start, betas_end, max_timesteps)
         self.ts = torch.arange(max_timesteps, dtype=torch.long)
 
     def __len__(self):
+        if self.dataset_root is not None:
+            return len(self.image_paths)
+
         return len(self.ds)
 
     def __getitem__(self, index):
-        img = self.ds[index]["image"]          # PIL Image
-        img = img.convert("RGB")
+        
+
+        if self.dataset_root is not None:
+            img = Image.open(self.image_paths[index]).convert("RGB")
+        else:
+            img = self.ds[index]["image"].convert("RGB")          # PIL Image
+
         img = self.transform(img)
 
-        number = torch.tensor(0.0)              # dummy — unconditional
+        number = torch.tensor(0.0)              # dummy — unconditional, TODO: Make it work
 
         t = self.ts[torch.randint(0, len(self.ts), (1,))].item()
 
@@ -62,8 +75,8 @@ class dataset_celebhq(Dataset):
 
 
 if __name__ == "__main__":
-    # quick smoke test
-    dataset = dataset_celebhq(split="train")
+ 
+    dataset = dataset(split="train")
     print(f"Dataset size: {len(dataset)}")
 
     img, x_t, noise, t, number = dataset[0]

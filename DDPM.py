@@ -68,7 +68,7 @@ class LinearNoiseScheduler:
             z = torch.randn(xt.shape).to(xt.device)
             return mean + sigma * z, x0
         
-
+@torch.no_grad()
 def sample_v2(latent_grid_size: int, dit, vae, device, scheduler):
     xt = torch.randn((1, 4, latent_grid_size, latent_grid_size)).to(device)
 
@@ -76,15 +76,11 @@ def sample_v2(latent_grid_size: int, dit, vae, device, scheduler):
         noise_pred = dit(xt, torch.as_tensor(i).unsqueeze(0).to(device))
         xt, x0_pred = scheduler.sample_prev_timestep(xt, noise_pred, torch.as_tensor(i).to(device))
 
-        if i == 0:
-            g = vae.to(device).decode(xt)
-        else:
-            g = xt
-            g = xt[:, :-1, :, :]
-        
-    g = torch.clamp(g, -1., 1.).detach().cpu()
-    g = (g + 1) / 2
+    img_tensor = vae.decode(xt)
+    img_tensor = torch.clamp(img_tensor, -1., 1.).detach().cpu()
+    img_tensor = (img_tensor + 1) / 2
+    grid = make_grid(img_tensor, nrow=2)
+    img = torchvision.transforms.ToPILImage()(grid)
 
-    grid = make_grid(g, nrow = 2)
     img = torchvision.transforms.ToPILImage()(grid)
     return img

@@ -14,44 +14,23 @@ from img_dataloader import dataset_imgs
 from torchvision.utils import make_grid
 import torchvision
 
+import json
 
-# num_timesteps = 1000
-# beta_start    = 0.0001
-# beta_end      = 0.02
-
-
-# scheduler = LinearNoiseScheduler(num_timesteps  = num_timesteps,
-#                                      beta_start = beta_start,
-#                                      beta_end   = beta_end)
+with open("config.json", "r") as file:
+    config = json.load(file)
 
 
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# vae = VAE(ch = 128, latent_channels = 4).to(device)
 
 
-# dit = DiT(d_model        = 256,
-#           g_channels       = 4,
-#           grid_size      = 32,
-#           patch_size     = 4,
-#           timestep_emb_dim  = 128,
-#         #   num_freq       = 128,
-#           num_layers     = 8,
-#           num_heads      = 4)
-
-# vae.eval()
-# dit.train()
-
-
-def train(epochs, dataloader, dit, vae, scheduler, device, acc_steps):
-    optimizer = AdamW(dit.parameters(), lr=1E-5, weight_decay=0)
+def train(start_epoch, epochs, dataloader, dit, vae, scheduler, device, acc_steps):
+    optimizer = AdamW(dit.parameters(), lr=config["Training"]["learning_rate"], weight_decay=0)
     loss_fn   = torch.nn.MSELoss()
 
     for param in vae.parameters():
         param.requires_grad = False
 
     losses = []
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         epoch_loss = 0.0
         step_count = 0
         for images, _x_t, _noise, _t, numbers in dataloader:
@@ -80,7 +59,24 @@ def train(epochs, dataloader, dit, vae, scheduler, device, acc_steps):
                 optimizer.zero_grad()
 
             epoch_loss += loss.item()
+
+            if step_count % 50 == 0:
+                avg_so_far = epoch_loss / step_count
+                print(f"[DiT] Epoch {epoch+1}/{epochs}  "
+                      f"Step {step_count}/{len(dataloader)}  "
+                      f"loss={avg_so_far:.6f}", flush=True)
+
+                with open("DiT_log.txt", "a") as file:
+                    file.write(f"\n[DiT] Epoch {epoch+1}/{epochs}  "
+                        f"Step {step_count}/{len(dataloader)}  "
+                        f"loss={avg_so_far:.6f}")
+                    file.flush()
+
         avg = epoch_loss / len(dataloader)
         losses.append(avg)
+
         print(f"[DiT] Epoch {epoch+1}/{epochs}  loss={avg:.6f}")
+
+        if epoch % config["saves"]["DiT_Save_every"] == 0:
+            torch.save(dit.state_dict(), config["saves"]["DiT_Path"])
     return losses

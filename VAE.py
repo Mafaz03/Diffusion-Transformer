@@ -147,7 +147,7 @@ class VAE(torch.nn.Module):
     def decode(self, compressed_grid):
         z = compressed_grid / self.scaling_factor
         reconstructed_grid = self.vae.decode(z)
-        return reconstructed_grid
+        return reconstructed_grid.sample
 
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor):
         std = torch.exp(0.5 * logvar)
@@ -158,7 +158,7 @@ class VAE(torch.nn.Module):
         mu, logvar = self.encode(normal_grid = grid)        # each [B, 4, H/8, W/8]
         z = self.reparameterize(mu = mu, logvar = logvar)   # sampling from gausian distribution
         recon_grid = self.decode(compressed_grid = z)
-        return recon_grid.sample, mu, logvar
+        return recon_grid, mu, logvar
 
 
 def vae_loss(recon, x, mu, logvar, kl_weight=1e-4):

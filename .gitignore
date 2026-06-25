@@ -4,3 +4,8 @@
 *.pth
 bing_ds/*
 flowers_dataset
+celeba_hq_256
+sd-vae-ft-mse
+*.zip
+LidDriven_imgs
+__pycache__
