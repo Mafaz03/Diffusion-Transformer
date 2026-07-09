@@ -1,7 +1,10 @@
 import torch
 from typing import Tuple, List
 from einops import rearrange
+import json
 
+with open("config.json", "r") as file:
+    config = json.load(file)
 
 class TransformerLayer(torch.nn.Module):
     def __init__(self, d_model: int, num_heads: int):
@@ -90,6 +93,28 @@ def get_time_embedding(time_steps, temb_dim):
     t_emb = torch.cat([torch.sin(t_emb), torch.cos(t_emb)], dim=-1)
     return t_emb
 
+def get_number_embedding(n: torch.Tensor, nemb_dim: int):
+    """
+    Fourier embedding for continuous values in [0, max_value].
+    Scales input to [0, 1] first so frequencies are calibrated correctly.
+    """
+    n = (n.float() - config["Stats"]["Re_Mean"]) / config["Stats"]["Re_Std"]       # normalize
+    assert nemb_dim % 2 == 0
+    
+    # factor = 10000^(2i/d_model)
+    factor = 10000 ** ((torch.arange(
+        start=0,
+        end=nemb_dim // 2,
+        dtype=torch.float32,
+        device=n.device) / (nemb_dim // 2))
+    )
+
+    # pos / factor
+    # timesteps B -> [B, 1] -> B, nemb_dim
+    n_emb = n.unsqueeze(-1).repeat(1, nemb_dim // 2) / factor
+    n_emb = torch.cat([torch.sin(n_emb), torch.cos(n_emb)], dim=-1)
+    return n_emb
+
 
 def get_patch_position_embedding(pos_emb_dim, grid_size: Tuple, device):
     assert pos_emb_dim % 4 == 0, 'Position embedding dimension must be divisible by 4'
@@ -169,7 +194,7 @@ class PatchEmbedding(torch.nn.Module):
         return out # [B, grid_height/patch_height * grid_width/patch_width, d_model]
     
 class DiT(torch.nn.Module):
-    def __init__(self, d_model, patch_size, grid_size, g_channels, timestep_emb_dim, num_layers, num_heads):
+    def __init__(self, d_model, patch_size, grid_size, g_channels, timestep_emb_dim, number_emb_dim, num_layers, num_heads):
         super().__init__()
 
         num_layers       = num_layers
@@ -184,6 +209,7 @@ class DiT(torch.nn.Module):
         self.patch_width  = patch_size
 
         self.timestep_emb_dim = timestep_emb_dim
+        self.number_emb_dim = number_emb_dim
 
         # Number of patches along height and width
         self.nh = self.grid_height // self.patch_height
@@ -204,6 +230,13 @@ class DiT(torch.nn.Module):
             torch.nn.SiLU(),
             torch.nn.Linear(self.d_model, self.d_model)
         )
+
+        self.n_proj = torch.nn.Sequential(
+            torch.nn.Linear(self.number_emb_dim, self.d_model),
+            torch.nn.SiLU(),
+            torch.nn.Linear(self.d_model, self.d_model)
+        )
+        
 
         # All Transformer Layers
         self.layers = torch.nn.ModuleList([
@@ -228,28 +261,33 @@ class DiT(torch.nn.Module):
         torch.nn.init.normal_(self.t_proj[0].weight, std=0.02)
         torch.nn.init.normal_(self.t_proj[2].weight, std=0.02)
 
+        torch.nn.init.normal_(self.n_proj[0].weight, std=0.02)
+        torch.nn.init.normal_(self.n_proj[2].weight, std=0.02)
+
         torch.nn.init.constant_(self.adaptive_norm_layer[-1].weight, 0)
         torch.nn.init.constant_(self.adaptive_norm_layer[-1].bias, 0)
 
         torch.nn.init.constant_(self.proj_out.weight, 0)
         torch.nn.init.constant_(self.proj_out.bias, 0)
 
-    def forward(self, x, t):
+    def forward(self, x, t, n):
         # Patchify
         out = self.patch_embed_layer(x)
 
         # Compute Timestep representation
         # t_emb -> (Batch, timestep_emb_dim)
         t_emb = get_time_embedding(torch.as_tensor(t).long(), self.timestep_emb_dim)
+        n_emb = get_number_embedding(torch.as_tensor(n), self.number_emb_dim)
+
         # (Batch, timestep_emb_dim) -> (Batch, d_model)
-        t_emb = self.t_proj(t_emb)
+        c_emb = self.t_proj(t_emb) + self.n_proj(n_emb)
 
         # Go through the transformer layers
         for layer in self.layers:
-            out = layer(out, t_emb)
+            out = layer(out, c_emb)
 
         # Shift and scale predictions for output normalization
-        pre_mlp_shift, pre_mlp_scale = self.adaptive_norm_layer(t_emb).chunk(2, dim=1)
+        pre_mlp_shift, pre_mlp_scale = self.adaptive_norm_layer(c_emb).chunk(2, dim=1)
         out = (self.norm(out) * (1 + pre_mlp_scale.unsqueeze(1)) +
                pre_mlp_shift.unsqueeze(1))
 
@@ -264,15 +302,16 @@ class DiT(torch.nn.Module):
         return out
     
 if __name__ == "__main__":
-    dit = DiT(d_model          = 512,
+    dit = DiT(d_model        = 512,
             patch_size       = 2,
             grid_size        = 32,
             g_channels       = 4,
             timestep_emb_dim = 512,
+            number_emb_dim   = 512,
             num_layers       = 12,
             num_heads        = 16)
     
     print(f"{sum(i.numel() for i in dit.parameters()):,}")
     grid = torch.rand(1, 4, 32, 32)
     t = torch.arange(0, 1, 1)
-    print(dit(grid, t).shape)
+    print(dit(grid, t, t).shape)

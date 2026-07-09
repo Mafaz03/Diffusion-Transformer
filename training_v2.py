@@ -20,8 +20,6 @@ with open("config.json", "r") as file:
     config = json.load(file)
 
 
-
-
 def train(start_epoch, epochs, dataloader, dit, vae, scheduler, device, acc_steps):
     optimizer = AdamW(dit.parameters(), lr=config["Training"]["learning_rate"], weight_decay=0)
     loss_fn   = torch.nn.MSELoss()
@@ -50,7 +48,7 @@ def train(start_epoch, epochs, dataloader, dit, vae, scheduler, device, acc_step
 
             noisy_im = scheduler.add_noise(z, noise, t)
 
-            pred = dit(noisy_im, t)
+            pred = dit(noisy_im, t, numbers)
             loss = loss_fn(pred, noise)
             loss = loss / acc_steps
             loss.backward()

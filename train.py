@@ -52,12 +52,15 @@ dit = DiT(d_model           = config["DiT"]["d_model"],
           grid_size         = config["DiT"]["grid_size"],
           patch_size        = config["DiT"]["patch_size"],
           timestep_emb_dim  = config["DiT"]["timestep_emb_dim"],
-      #   num_freq          = config["DiT"]["num_freq"],
+          number_emb_dim    = config["DiT"]["number_emb_dim"],
           num_layers        = config["DiT"]["num_layers"],
           num_heads         = config["DiT"]["num_heads"])
 
+
 dit = dit.to(device)
 vae = vae.to(device)
+
+# dit.load_state_dict(torch.load('DiT_landscape.pth', map_location = device))
 
 ########################################
 ########### Training DiT  ##############
@@ -68,6 +71,7 @@ print("Training DiT ......")
 
 from dataloader import dataset
 
+# dataset    = dataset(split="train", dataset_root = "celeba_hq_256")
 dataset    = dataset(split="train", dataset_root = "celeba_hq_256")
 dataloader = DataLoader(dataset, batch_size = config["Training"]["batch_size"], shuffle=True, num_workers=2)
 

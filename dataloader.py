@@ -61,8 +61,11 @@ class dataset(Dataset):
             img = self.ds[index]["image"].convert("RGB")          # PIL Image
 
         img = self.transform(img)
-
-        number = torch.tensor(0.0)              # dummy — unconditional, TODO: Make it work
+        # import pdb; pdb.set_trace()
+        # number = torch.tensor(float(self.image_paths[index].split("/")[-1].split(".jpg")[0]))           # TODO: fix for .jpg/.png/.exr etc
+        filename = os.path.basename(self.image_paths[index])   # 123.png
+        stem = os.path.splitext(filename)[0]                   # 123
+        number = torch.tensor(float(stem))
 
         t = self.ts[torch.randint(0, len(self.ts), (1,))].item()
 
@@ -76,7 +79,7 @@ class dataset(Dataset):
 
 if __name__ == "__main__":
  
-    dataset = dataset(split="train")
+    dataset = dataset(split="train", dataset_root = "LidDriven_imgs")
     print(f"Dataset size: {len(dataset)}")
 
     img, x_t, noise, t, number = dataset[0]
@@ -86,7 +89,15 @@ if __name__ == "__main__":
     print(f"t:      {t}")
     print(f"number: {number}")
 
-    loader = DataLoader(dataset, batch_size=16, shuffle=True, num_workers=2)
+    loader = DataLoader(dataset, batch_size=16, shuffle=True)#, num_workers=2) # some macos problem
     batch = next(iter(loader))
     imgs, x_ts, noises, ts, numbers = batch
     print(f"\nBatch shapes: imgs={imgs.shape}  numbers={numbers.shape}")
+
+    numbers_list = torch.tensor([], dtype=torch.float32)
+    for imgs, x_ts, noises, ts, numbers in loader:
+        numbers_list = torch.cat((numbers_list, numbers), dim=0)
+
+    print("Mean: ", numbers_list.mean().item())
+    print("Std: ", numbers_list.std().item())
+
